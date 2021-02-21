@@ -31,6 +31,7 @@ import org.checkerframework.checker.index.qual.LTEqLengthOf;
 import org.checkerframework.checker.index.qual.LTLengthOf;
 import org.checkerframework.checker.index.qual.NonNegative;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.signedness.qual.SignedPositive;
 import org.checkerframework.framework.qual.AnnotatedFor;
 
 import java.io.ObjectStreamClass.WeakClassKey;
@@ -238,7 +239,7 @@ import sun.security.action.GetIntegerAction;
  *     Object Serialization Specification, Section 3, Object Input Classes</a>
  * @since   1.1
  */
-@AnnotatedFor({"nullness", "index"})
+@AnnotatedFor({"nullness", "index", "signedness"})
 public class ObjectInputStream
     extends InputStream implements ObjectInput, ObjectStreamConstants
 {
@@ -1071,7 +1072,7 @@ public class ObjectInputStream
      * @throws  EOFException If end of file is reached.
      * @throws  IOException If other I/O error has occurred.
      */
-    public @NonNegative int readUnsignedByte()  throws IOException {
+    public @SignedPositive @NonNegative int readUnsignedByte()  throws IOException {
         return bin.readUnsignedByte();
     }
 
@@ -1104,7 +1105,7 @@ public class ObjectInputStream
      * @throws  EOFException If end of file is reached.
      * @throws  IOException If other I/O error has occurred.
      */
-    public @NonNegative int readUnsignedShort() throws IOException {
+    public @SignedPositive @NonNegative int readUnsignedShort() throws IOException {
         return bin.readUnsignedShort();
     }
 
@@ -3350,7 +3351,7 @@ public class ObjectInputStream
             return (byte) v;
         }
 
-        public int readUnsignedByte() throws IOException {
+        public @SignedPositive @NonNegative int readUnsignedByte() throws IOException {
             int v = read();
             if (v < 0) {
                 throw new EOFException();
@@ -3382,7 +3383,7 @@ public class ObjectInputStream
             return v;
         }
 
-        public int readUnsignedShort() throws IOException {
+        public @SignedPositive @NonNegative int readUnsignedShort() throws IOException {
             if (!blkmode) {
                 pos = 0;
                 in.readFully(buf, 0, 2);
