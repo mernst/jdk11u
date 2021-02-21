@@ -257,7 +257,7 @@ JVM_handle_linux_signal(int sig,
   // avoid unnecessary crash when libjsig is not preloaded, try handle signals
   // that do not require siginfo/ucontext first.
 
-  if (sig == SIGPIPE) {
+  if (sig == SIGPIPE || sig == SIGXFSZ) {
     if (os::Linux::chained_handler(sig, info, ucVoid)) {
       return true;
     } else {
@@ -270,8 +270,9 @@ JVM_handle_linux_signal(int sig,
 
 #ifdef CAN_SHOW_REGISTERS_ON_ASSERT
   if ((sig == SIGSEGV || sig == SIGBUS) && info != NULL && info->si_addr == g_assert_poison) {
-    handle_assert_poison_fault(ucVoid, info->si_addr);
-    return 1;
+    if (handle_assert_poison_fault(ucVoid, info->si_addr)) {
+      return 1;
+    }
   }
 #endif
 

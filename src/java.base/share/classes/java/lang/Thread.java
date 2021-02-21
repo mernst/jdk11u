@@ -204,11 +204,6 @@ public
     private final long stackSize;
 
     /*
-     * JVM-private state that persists after native thread termination.
-     */
-    private long nativeParkEventPointer;
-
-    /*
      * Thread ID
      */
     private final long tid;

@@ -34,6 +34,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+
+import sun.nio.cs.ISO_8859_1;
+
 import jdk.internal.HotSpotIntrinsicCandidate;
 
 /**
@@ -559,7 +562,7 @@ public class Base64 {
          *          if {@code src} is not in valid Base64 scheme
          */
         public @PolySigned byte[] decode(String src) {
-            return decode(src.getBytes(StandardCharsets.ISO_8859_1));
+            return decode(src.getBytes(ISO_8859_1.INSTANCE));
         }
 
         /**

@@ -304,7 +304,9 @@ CallGenerator* Compile::call_generator(ciMethod* callee, int vtable_index, bool 
   // Use a more generic tactic, like a simple call.
   if (call_does_dispatch) {
     const char* msg = "virtual call";
-    if (PrintInlining) print_inlining(callee, jvms->depth() - 1, jvms->bci(), msg);
+    if (C->print_inlining()) {
+      print_inlining(callee, jvms->depth() - 1, jvms->bci(), msg);
+    }
     C->log_inline_failure(msg);
     return CallGenerator::for_virtual_call(callee, vtable_index);
   } else {
@@ -470,7 +472,7 @@ void Parse::do_call() {
   // Push appendix argument (MethodType, CallSite, etc.), if one.
   if (iter().has_appendix()) {
     ciObject* appendix_arg = iter().get_appendix();
-    const TypeOopPtr* appendix_arg_type = TypeOopPtr::make_from_constant(appendix_arg);
+    const TypeOopPtr* appendix_arg_type = TypeOopPtr::make_from_constant(appendix_arg, /* require_const= */ true);
     Node* appendix_arg_node = _gvn.makecon(appendix_arg_type);
     push(appendix_arg_node);
   }

@@ -1192,6 +1192,30 @@ Node* PhiNode::Identity(PhaseGVN* phase) {
     if (id != NULL)  return id;
   }
 
+  // Looking for phis with identical inputs.  If we find one that has
+  // type TypePtr::BOTTOM, replace the current phi with the bottom phi.
+  if (phase->is_IterGVN() && type() == Type::MEMORY && adr_type() !=
+      TypePtr::BOTTOM && !adr_type()->is_known_instance()) {
+    uint phi_len = req();
+    Node* phi_reg = region();
+    for (DUIterator_Fast imax, i = phi_reg->fast_outs(imax); i < imax; i++) {
+      Node* u = phi_reg->fast_out(i);
+      if (u->is_Phi() && u->as_Phi()->type() == Type::MEMORY &&
+          u->adr_type() == TypePtr::BOTTOM && u->in(0) == phi_reg &&
+          u->req() == phi_len) {
+        for (uint j = 1; j < phi_len; j++) {
+          if (in(j) != u->in(j)) {
+            u = NULL;
+            break;
+          }
+        }
+        if (u != NULL) {
+          return u;
+        }
+      }
+    }
+  }
+
   return this;                     // No identity
 }
 
@@ -1958,23 +1982,30 @@ Node *PhiNode::Ideal(PhaseGVN *phase, bool can_reshape) {
       } else {
         // We know that at least one MergeMem->base_memory() == this
         // (saw_self == true). If all other inputs also references this phi
-        // (directly or through data nodes) - it is dead loop.
+        // (directly or through data nodes) - it is a dead loop.
         bool saw_safe_input = false;
         for (uint j = 1; j < req(); ++j) {
-          Node *n = in(j);
-          if (n->is_MergeMem() && n->as_MergeMem()->base_memory() == this)
-            continue;              // skip known cases
+          Node* n = in(j);
+          if (n->is_MergeMem()) {
+            MergeMemNode* mm = n->as_MergeMem();
+            if (mm->base_memory() == this || mm->base_memory() == mm->empty_memory()) {
+              // Skip this input if it references back to this phi or if the memory path is dead
+              continue;
+            }
+          }
           if (!is_unsafe_data_reference(n)) {
             saw_safe_input = true; // found safe input
             break;
           }
         }
-        if (!saw_safe_input)
-          return top; // all inputs reference back to this phi - dead loop
+        if (!saw_safe_input) {
+          // There is a dead loop: All inputs are either dead or reference back to this phi
+          return top;
+        }
 
         // Phi(...MergeMem(m0, m1:AT1, m2:AT2)...) into
         //     MergeMem(Phi(...m0...), Phi:AT1(...m1...), Phi:AT2(...m2...))
-        PhaseIterGVN *igvn = phase->is_IterGVN();
+        PhaseIterGVN* igvn = phase->is_IterGVN();
         Node* hook = new Node(1);
         PhiNode* new_base = (PhiNode*) clone();
         // Must eagerly register phis, since they participate in loops.

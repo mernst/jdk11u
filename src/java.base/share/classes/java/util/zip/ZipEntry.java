@@ -64,7 +64,7 @@ public
     int flag = 0;       // general purpose flag
     byte[] extra;       // optional extra field data for entry
     String comment;     // optional comment string for entry
-
+    int extraAttributes = -1; // e.g. POSIX permissions, sym links.
     /**
      * Compression method for uncompressed entries.
      */
@@ -138,6 +138,7 @@ public
         flag = e.flag;
         extra = e.extra;
         comment = e.comment;
+        extraAttributes = e.extraAttributes;
     }
 
     /**

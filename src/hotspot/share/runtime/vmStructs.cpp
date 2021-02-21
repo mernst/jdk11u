@@ -951,7 +951,7 @@ typedef PaddedEnd<ObjectMonitor>              PaddedObjectMonitor;
   c2_nonstatic_field(Node,                     _outcnt,                                       node_idx_t)                            \
   c2_nonstatic_field(Node,                     _outmax,                                       node_idx_t)                            \
   c2_nonstatic_field(Node,                     _idx,                                          const node_idx_t)                      \
-  c2_nonstatic_field(Node,                     _class_id,                                     jushort)                               \
+  c2_nonstatic_field(Node,                     _class_id,                                     juint)                                 \
   c2_nonstatic_field(Node,                     _flags,                                        jushort)                               \
                                                                                                                                      \
   c2_nonstatic_field(Compile,                  _root,                                         RootNode*)                             \
@@ -1444,6 +1444,7 @@ typedef PaddedEnd<ObjectMonitor>              PaddedObjectMonitor;
   declare_type(BufferBlob,               RuntimeBlob)                     \
   declare_type(AdapterBlob,              BufferBlob)                      \
   declare_type(MethodHandlesAdapterBlob, BufferBlob)                      \
+  declare_type(VtableBlob,               BufferBlob)                      \
   declare_type(CompiledMethod,           CodeBlob)                        \
   declare_type(nmethod,                  CompiledMethod)                  \
   declare_type(RuntimeStub,              RuntimeBlob)                     \

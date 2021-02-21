@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -517,6 +517,19 @@ JRT_ENTRY_NO_ASYNC(static address, exception_handler_for_pc_helper(JavaThread* t
   }
 #endif
 
+  // debugging support
+  // tracing
+  if (log_is_enabled(Info, exceptions)) {
+    ResourceMark rm;
+    stringStream tempst;
+    tempst.print("C1 compiled method <%s>\n"
+                 " at PC" INTPTR_FORMAT " for thread " INTPTR_FORMAT,
+                 nm->method()->print_value_string(), p2i(pc), p2i(thread));
+    Exceptions::log_exception(exception, tempst.as_string());
+  }
+  // for AbortVMOnException flag
+  Exceptions::debug_check_abort(exception);
+
   // Check the stack guard pages and reenable them if necessary and there is
   // enough space on the stack to do so.  Use fast exceptions only if the guard
   // pages are enabled.
@@ -563,19 +576,6 @@ JRT_ENTRY_NO_ASYNC(static address, exception_handler_for_pc_helper(JavaThread* t
 
     // New exception handling mechanism can support inlined methods
     // with exception handlers since the mappings are from PC to PC
-
-    // debugging support
-    // tracing
-    if (log_is_enabled(Info, exceptions)) {
-      ResourceMark rm;
-      stringStream tempst;
-      tempst.print("compiled method <%s>\n"
-                   " at PC" INTPTR_FORMAT " for thread " INTPTR_FORMAT,
-                   nm->method()->print_value_string(), p2i(pc), p2i(thread));
-      Exceptions::log_exception(exception, tempst.as_string());
-    }
-    // for AbortVMOnException flag
-    Exceptions::debug_check_abort(exception);
 
     // Clear out the exception oop and pc since looking up an
     // exception handler can cause class loading, which might throw an
@@ -690,43 +690,25 @@ JRT_ENTRY(void, Runtime1::throw_incompatible_class_change_error(JavaThread* thre
 JRT_END
 
 
-JRT_ENTRY_NO_ASYNC(void, Runtime1::monitorenter(JavaThread* thread, oopDesc* obj, BasicObjectLock* lock))
+JRT_BLOCK_ENTRY(void, Runtime1::monitorenter(JavaThread* thread, oopDesc* obj, BasicObjectLock* lock))
   NOT_PRODUCT(_monitorenter_slowcase_cnt++;)
-  if (PrintBiasedLockingStatistics) {
-    Atomic::inc(BiasedLocking::slow_path_entry_count_addr());
-  }
-  Handle h_obj(thread, obj);
-  if (UseBiasedLocking) {
-    // Retry fast entry if bias is revoked to avoid unnecessary inflation
-    ObjectSynchronizer::fast_enter(h_obj, lock->lock(), true, CHECK);
-  } else {
+  if (!UseBiasedLocking) {
     if (UseFastLocking) {
-      // When using fast locking, the compiled code has already tried the fast case
       assert(obj == lock->obj(), "must match");
-      ObjectSynchronizer::slow_enter(h_obj, lock->lock(), THREAD);
     } else {
       lock->set_obj(obj);
-      ObjectSynchronizer::fast_enter(h_obj, lock->lock(), false, THREAD);
     }
   }
+  SharedRuntime::monitor_enter_helper(obj, lock->lock(), thread, UseFastLocking);
 JRT_END
 
 
 JRT_LEAF(void, Runtime1::monitorexit(JavaThread* thread, BasicObjectLock* lock))
   NOT_PRODUCT(_monitorexit_slowcase_cnt++;)
-  assert(thread == JavaThread::current(), "threads must correspond");
   assert(thread->last_Java_sp(), "last_Java_sp must be set");
-  // monitorexit is non-blocking (leaf routine) => no exceptions can be thrown
-  EXCEPTION_MARK;
-
   oop obj = lock->obj();
   assert(oopDesc::is_oop(obj), "must be NULL or an object");
-  if (UseFastLocking) {
-    // When using fast locking, the compiled code has already tried the fast case
-    ObjectSynchronizer::slow_exit(obj, lock->lock(), THREAD);
-  } else {
-    ObjectSynchronizer::fast_exit(obj, lock->lock(), THREAD);
-  }
+  SharedRuntime::monitor_exit_helper(obj, lock->lock(), thread, UseFastLocking);
 JRT_END
 
 // Cf. OptoRuntime::deoptimize_caller_frame

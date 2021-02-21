@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 1997, 2019, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2014, 2019, Red Hat Inc. All rights reserved.
+ * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2020, Red Hat Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -4239,18 +4239,9 @@ void MacroAssembler::load_byte_map_base(Register reg) {
   jbyte *byte_map_base =
     ((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base();
 
-  if (is_valid_AArch64_address((address)byte_map_base)) {
-    // Strictly speaking the byte_map_base isn't an address at all,
-    // and it might even be negative.
-    unsigned long offset;
-    adrp(reg, ExternalAddress((address)byte_map_base), offset);
-    // We expect offset to be zero with most collectors.
-    if (offset != 0) {
-      add(reg, reg, offset);
-    }
-  } else {
-    mov(reg, (uint64_t)byte_map_base);
-  }
+  // Strictly speaking the byte_map_base isn't an address at all, and it might
+  // even be negative. It is thus materialised as a constant.
+  mov(reg, (uint64_t)byte_map_base);
 }
 
 void MacroAssembler::build_frame(int framesize) {
@@ -4849,8 +4840,6 @@ void MacroAssembler::string_compare(Register str1, Register str2,
       sub(cnt2, zr, cnt2, LSL, str2_chr_shift);
     } else if (isLU) {
       ldrs(vtmp, Address(str1));
-      cmp(str1, str2);
-      br(Assembler::EQ, DONE);
       ldr(tmp2, Address(str2));
       cmp(cnt2, STUB_THRESHOLD);
       br(GE, STUB);
@@ -4865,8 +4854,6 @@ void MacroAssembler::string_compare(Register str1, Register str2,
       fmovd(tmp1, vtmp);
     } else { // UL case
       ldr(tmp1, Address(str1));
-      cmp(str1, str2);
-      br(Assembler::EQ, DONE);
       ldrs(vtmp, Address(str2));
       cmp(cnt2, STUB_THRESHOLD);
       br(GE, STUB);

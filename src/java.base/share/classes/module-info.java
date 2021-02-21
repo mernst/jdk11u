@@ -166,6 +166,8 @@ module java.base {
     // additional qualified exports may be inserted at build time
     // see make/gensrc/GenModuleInfo.gmk
 
+    exports com.sun.crypto.provider to
+        jdk.crypto.cryptoki;
     exports com.sun.security.ntlm to
         java.security.sasl;
     exports jdk.internal to
@@ -214,6 +216,7 @@ module java.base {
         java.security.jgss,
         java.sql,
         java.xml,
+        jdk.jartool,
         jdk.attach,
         jdk.charsets,
         jdk.compiler,

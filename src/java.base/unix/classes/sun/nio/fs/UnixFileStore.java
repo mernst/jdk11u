@@ -31,6 +31,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.dataflow.qual.Pure;
 import org.checkerframework.dataflow.qual.SideEffectFree;
 
+import sun.nio.cs.UTF_8;
+
 import jdk.internal.util.StaticProperty;
 
 import java.nio.file.*;
@@ -273,7 +275,7 @@ abstract class UnixFileStore
         Path file = Path.of(fstypes);
         try {
             try (ReadableByteChannel rbc = Files.newByteChannel(file)) {
-                result.load(Channels.newReader(rbc, "UTF-8"));
+                result.load(Channels.newReader(rbc, UTF_8.INSTANCE));
             }
         } catch (IOException x) {
         }

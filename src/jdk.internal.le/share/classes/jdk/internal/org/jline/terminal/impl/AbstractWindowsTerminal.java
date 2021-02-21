@@ -85,8 +85,8 @@ public abstract class AbstractWindowsTerminal extends AbstractTerminal {
         super(name, type, selectCharset(encoding, codepage), signalHandler);
         NonBlockingPumpReader reader = NonBlocking.nonBlockingPumpReader();
         this.slaveInputPipe = reader.getWriter();
-        this.reader = reader;
         this.input = inputStreamWrapper.apply(NonBlocking.nonBlockingStream(reader, encoding()));
+        this.reader = NonBlocking.nonBlocking(name, input, encoding());
         this.writer = new PrintWriter(writer);
         this.output = new WriterOutputStream(writer, encoding());
         parseInfoCmp();
@@ -214,10 +214,12 @@ public abstract class AbstractWindowsTerminal extends AbstractTerminal {
         throw new UnsupportedOperationException("Can not resize windows terminal");
     }
 
-    public void close() throws IOException {
-        super.close();
+    protected void doClose() throws IOException {
+        super.doClose();
         closing = true;
-        pump.interrupt();
+        if (pump != null) {
+            pump.interrupt();
+        }
         ShutdownHooks.remove(closer);
         for (Map.Entry<Signal, Object> entry : nativeHandlers.entrySet()) {
             Signals.unregister(entry.getKey().name(), entry.getValue());

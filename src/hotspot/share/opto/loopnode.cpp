@@ -316,6 +316,7 @@ IdealLoopTree* PhaseIdealLoop::create_outer_strip_mined_loop(BoolNode *test, Nod
   loop->_parent = outer_ilt;
   loop->_next = NULL;
   loop->_nest++;
+  assert(loop->_nest <= SHRT_MAX, "sanity");
 
   set_loop(iffalse, outer_ilt);
   register_control(outer_le, outer_ilt, iffalse);
@@ -1009,16 +1010,32 @@ void LoopNode::verify_strip_mined(int expect_skeleton) const {
     bool has_skeleton = outer_le->in(1)->bottom_type()->singleton() && outer_le->in(1)->bottom_type()->is_int()->get_con() == 0;
     if (has_skeleton) {
       assert(expect_skeleton == 1 || expect_skeleton == -1, "unexpected skeleton node");
-      assert(outer->outcnt() == 2, "only phis");
+      assert(outer->outcnt() == 2, "only control nodes");
     } else {
       assert(expect_skeleton == 0 || expect_skeleton == -1, "no skeleton node?");
       uint phis = 0;
+      uint be_loads = 0;
+      Node* be = inner->in(LoopNode::LoopBackControl);
       for (DUIterator_Fast imax, i = inner->fast_outs(imax); i < imax; i++) {
         Node* u = inner->fast_out(i);
         if (u->is_Phi()) {
           phis++;
+          for (DUIterator_Fast jmax, j = be->fast_outs(jmax); j < jmax; j++) {
+            Node* n = be->fast_out(j);
+            if (n->is_Load()) {
+              assert(n->in(0) == be, "should be on the backedge");
+              do {
+                n = n->raw_out(0);
+              } while (!n->is_Phi());
+              if (n == u) {
+                be_loads++;
+                break;
+              }
+            }
+          }
         }
       }
+      assert(be_loads <= phis, "wrong number phis that depends on a pinned load");
       for (DUIterator_Fast imax, i = outer->fast_outs(imax); i < imax; i++) {
         Node* u = outer->fast_out(i);
         assert(u == outer || u == inner || u->is_Phi(), "nothing between inner and outer loop");
@@ -1030,7 +1047,9 @@ void LoopNode::verify_strip_mined(int expect_skeleton) const {
           stores++;
         }
       }
-      assert(outer->outcnt() >= phis + 2 && outer->outcnt() <= phis + 2 + stores + 1, "only phis");
+      // Late optimization of loads on backedge can cause Phi of outer loop to be eliminated but Phi of inner loop is
+      // not guaranteed to be optimized out.
+      assert(outer->outcnt() >= phis + 2 - be_loads && outer->outcnt() <= phis + 2 + stores + 1, "only phis");
     }
     assert(sfpt->outcnt() == 1, "no data node");
     assert(outer_tail->outcnt() == 1 || !has_skeleton, "no data node");
@@ -1626,7 +1645,28 @@ const Type* OuterStripMinedLoopEndNode::Value(PhaseGVN* phase) const {
   if (phase->type(in(0)) == Type::TOP)
     return Type::TOP;
 
+  // Until expansion, the loop end condition is not set so this should not constant fold.
+  if (is_expanded(phase)) {
+    return IfNode::Value(phase);
+  }
+
   return TypeTuple::IFBOTH;
+}
+
+bool OuterStripMinedLoopEndNode::is_expanded(PhaseGVN *phase) const {
+  // The outer strip mined loop head only has Phi uses after expansion
+  if (phase->is_IterGVN()) {
+    Node* backedge = proj_out_or_null(true);
+    if (backedge != NULL) {
+      Node* head = backedge->unique_ctrl_out();
+      if (head != NULL && head->is_OuterStripMinedLoop()) {
+        if (head->find_out_with(Op_Phi) != NULL) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 Node *OuterStripMinedLoopEndNode::Ideal(PhaseGVN *phase, bool can_reshape) {
@@ -1752,6 +1792,7 @@ bool IdealLoopTree::is_member(const IdealLoopTree *l) const {
 //------------------------------set_nest---------------------------------------
 // Set loop tree nesting depth.  Accumulate _has_call bits.
 int IdealLoopTree::set_nest( uint depth ) {
+  assert(depth <= SHRT_MAX, "sanity");
   _nest = depth;
   int bits = _has_call;
   if( _child ) bits |= _child->set_nest(depth+1);
@@ -4456,16 +4497,81 @@ void PhaseIdealLoop::dump_bad_graph(const char* msg, Node* n, Node* early, Node*
     }
   }
   tty->cr();
-  int ct = 0;
-  Node *dbg_legal = LCA;
-  while(!dbg_legal->is_Start() && ct < 100) {
-    tty->print("idom[%d] ",ct); dbg_legal->dump();
-    ct++;
-    dbg_legal = idom(dbg_legal);
-  }
+  tty->print_cr("idoms of early %d:", early->_idx);
+  dump_idom(early);
+  tty->cr();
+  tty->print_cr("idoms of (wrong) LCA %d:", LCA->_idx);
+  dump_idom(LCA);
+  tty->cr();
+  dump_real_LCA(early, LCA);
   tty->cr();
 }
-#endif
+
+// Find the real LCA of early and the wrongly assumed LCA.
+void PhaseIdealLoop::dump_real_LCA(Node* early, Node* wrong_lca) {
+  assert(!is_dominator(early, wrong_lca) && !is_dominator(early, wrong_lca),
+         "sanity check that one node does not dominate the other");
+  assert(!has_ctrl(early) && !has_ctrl(wrong_lca), "sanity check, no data nodes");
+
+  ResourceMark rm;
+  Node_List nodes_seen;
+  Node* real_LCA = NULL;
+  Node* n1 = wrong_lca;
+  Node* n2 = early;
+  uint count_1 = 0;
+  uint count_2 = 0;
+  // Add early and wrong_lca to simplify calculation of idom indices
+  nodes_seen.push(n1);
+  nodes_seen.push(n2);
+
+  // Walk the idom chain up from early and wrong_lca and stop when they intersect.
+  while (!n1->is_Start() && !n2->is_Start()) {
+    n1 = idom(n1);
+    n2 = idom(n2);
+    if (n1 == n2) {
+      // Both idom chains intersect at the same index
+      real_LCA = n1;
+      count_1 = nodes_seen.size() / 2;
+      count_2 = count_1;
+      break;
+    }
+    if (check_idom_chains_intersection(n1, count_1, count_2, &nodes_seen)) {
+      real_LCA = n1;
+      break;
+    }
+    if (check_idom_chains_intersection(n2, count_2, count_1, &nodes_seen)) {
+      real_LCA = n2;
+      break;
+    }
+    nodes_seen.push(n1);
+    nodes_seen.push(n2);
+  }
+
+  assert(real_LCA != NULL, "must always find an LCA");
+  tty->print_cr("Real LCA of early %d (idom[%d]) and (wrong) LCA %d (idom[%d]):", early->_idx, count_2, wrong_lca->_idx, count_1);
+  real_LCA->dump();
+}
+
+// Check if n is already on nodes_seen (i.e. idom chains of early and wrong_lca intersect at n). Determine the idom index of n
+// on both idom chains and return them in idom_idx_new and idom_idx_other, respectively.
+bool PhaseIdealLoop::check_idom_chains_intersection(const Node* n, uint& idom_idx_new, uint& idom_idx_other, const Node_List* nodes_seen) const {
+  if (nodes_seen->contains(n)) {
+    // The idom chain has just discovered n.
+    // Divide by 2 because nodes_seen contains the same amount of nodes from both chains.
+    idom_idx_new = nodes_seen->size() / 2;
+
+    // The other chain already contained n. Search the index.
+    for (uint i = 0; i < nodes_seen->size(); i++) {
+      if (nodes_seen->at(i) == n) {
+        // Divide by 2 because nodes_seen contains the same amount of nodes from both chains.
+        idom_idx_other = i / 2;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+#endif // ASSERT
 
 #ifndef PRODUCT
 //------------------------------dump-------------------------------------------
@@ -4538,7 +4644,19 @@ void PhaseIdealLoop::dump( IdealLoopTree *loop, uint idx, Node_List &rpo_list ) 
     }
   }
 }
-#endif
+
+void PhaseIdealLoop::dump_idom(Node* n) const {
+  if (has_ctrl(n)) {
+    tty->print_cr("No idom for data nodes");
+  } else {
+    for (int i = 0; i < 100 && !n->is_Start(); i++) {
+      tty->print("idom[%d] ", i);
+      n->dump();
+      n = idom(n);
+    }
+  }
+}
+#endif // NOT PRODUCT
 
 #if !defined(PRODUCT) || INCLUDE_SHENANDOAHGC
 // Collect a R-P-O for the whole CFG.

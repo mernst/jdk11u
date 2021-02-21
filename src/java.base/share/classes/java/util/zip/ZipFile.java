@@ -43,7 +43,6 @@ import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
 import java.lang.ref.Cleaner.Cleanable;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.InvalidPathException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.Files;
@@ -75,6 +74,7 @@ import jdk.internal.misc.VM;
 import jdk.internal.perf.PerfCounter;
 import jdk.internal.ref.CleanerFactory;
 import jdk.internal.vm.annotation.Stable;
+import sun.nio.cs.UTF_8;
 
 import static java.util.zip.ZipConstants64.*;
 import static java.util.zip.ZipUtils.*;
@@ -184,7 +184,7 @@ public
      * @since 1.3
      */
     public ZipFile(File file, int mode) throws IOException {
-        this(file, mode, StandardCharsets.UTF_8);
+        this(file, mode, UTF_8.INSTANCE);
     }
 
     /**
@@ -689,6 +689,11 @@ public
         e.size = CENLEN(cen, pos);
         e.csize = CENSIZ(cen, pos);
         e.method = CENHOW(cen, pos);
+        if (CENVEM_FA(cen, pos) == FILE_ATTRIBUTES_UNIX) {
+            // read all bits in this field, including sym link attributes
+            e.extraAttributes = CENATX_PERMS(cen, pos) & 0xFFFF;
+        }
+
         if (elen != 0) {
             int start = pos + CENHDR + nlen;
             e.setExtra0(Arrays.copyOfRange(cen, start, start + elen), true, false);
@@ -1106,7 +1111,7 @@ public
             for (int i = 0; i < names.length; i++) {
                 int pos = zsrc.metanames[i];
                 names[i] = new String(cen, pos + CENHDR, CENNAM(cen, pos),
-                                      StandardCharsets.UTF_8);
+                                      UTF_8.INSTANCE);
             }
             return names;
         }
@@ -1145,6 +1150,15 @@ public
                 public Stream<String> entryNameStream(ZipFile zip) {
                     return zip.entryNameStream();
                 }
+                @Override
+                public int getExtraAttributes(ZipEntry ze) {
+                    return ze.extraAttributes;
+                }
+                @Override
+                public void setExtraAttributes(ZipEntry ze, int extraAttrs) {
+                    ze.extraAttributes = extraAttrs;
+                }
+
              }
         );
         JLA = jdk.internal.misc.SharedSecrets.getJavaLangAccess();

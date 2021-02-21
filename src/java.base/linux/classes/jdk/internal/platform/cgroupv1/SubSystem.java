@@ -27,6 +27,7 @@ package jdk.internal.platform.cgroupv1;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -110,6 +111,8 @@ public class SubSystem {
         } catch (PrivilegedActionException e) {
             Metrics.unwrapIOExceptionAndRethrow(e);
             throw new InternalError(e.getCause());
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
         }
     }
 
@@ -121,7 +124,7 @@ public class SubSystem {
         try {
             List<String> lines = subsystem.readMatchingLines(param);
             for (String line: lines) {
-                if (line.contains(match)) {
+                if (line.startsWith(match)) {
                     retval = conversion.apply(line);
                     break;
                 }
@@ -140,6 +143,8 @@ public class SubSystem {
         } catch (PrivilegedActionException e) {
             Metrics.unwrapIOExceptionAndRethrow(e);
             throw new InternalError(e.getCause());
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
         }
     }
 
@@ -202,8 +207,9 @@ public class SubSystem {
                                            .findFirst();
 
             return result.isPresent() ? Long.parseLong(result.get()) : 0L;
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
+            return 0L;
+        } catch (UncheckedIOException e) {
             return 0L;
         }
     }
@@ -266,6 +272,7 @@ public class SubSystem {
     public static class MemorySubSystem extends SubSystem {
 
         private boolean hierarchical;
+        private boolean swapenabled;
 
         public MemorySubSystem(String root, String mountPoint) {
             super(root, mountPoint);
@@ -277,6 +284,14 @@ public class SubSystem {
 
         void setHierarchical(boolean hierarchical) {
             this.hierarchical = hierarchical;
+        }
+
+        boolean isSwapEnabled() {
+            return swapenabled;
+        }
+
+        void setSwapEnabled(boolean swapenabled) {
+            this.swapenabled = swapenabled;
         }
 
     }

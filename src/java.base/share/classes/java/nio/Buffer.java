@@ -297,8 +297,8 @@ public abstract class Buffer {
     public Buffer position(@NonNegative int newPosition) {
         if (newPosition > limit | newPosition < 0)
             throw createPositionException(newPosition);
+        if (mark > newPosition) mark = -1;
         position = newPosition;
-        if (mark > position) mark = -1;
         return this;
     }
 
@@ -487,7 +487,8 @@ public abstract class Buffer {
      * @return  The number of elements remaining in this buffer
      */
     public final @NonNegative int remaining() {
-        return limit - position;
+        int rem = limit - position;
+        return rem > 0 ? rem : 0;
     }
 
     /**

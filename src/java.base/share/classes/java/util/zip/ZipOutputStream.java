@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,11 +32,11 @@ import org.checkerframework.framework.qual.AnnotatedFor;
 import java.io.OutputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.Vector;
 import java.util.HashSet;
 import static java.util.zip.ZipConstants64.*;
 import static java.util.zip.ZipUtils.*;
+import sun.nio.cs.UTF_8;
 import sun.security.action.GetPropertyAction;
 
 /**
@@ -122,7 +122,7 @@ class ZipOutputStream extends DeflaterOutputStream implements ZipConstants {
      * @param out the actual output stream
      */
     public ZipOutputStream(OutputStream out) {
-        this(out, StandardCharsets.UTF_8);
+        this(out, UTF_8.INSTANCE);
     }
 
     /**
@@ -512,6 +512,15 @@ class ZipOutputStream extends DeflaterOutputStream implements ZipConstants {
         }
     }
 
+    /**
+     * Adds information about compatibility of file attribute information
+     * to a version value.
+     */
+    private int versionMadeBy(ZipEntry e, int version) {
+        return (e.extraAttributes < 0) ? version :
+                VERSION_MADE_BY_BASE_UNIX | (version & 0xff);
+    }
+
     /*
      * Write central directory (CEN) header for specified entry.
      * REMIND: add support for file attributes
@@ -543,10 +552,10 @@ class ZipOutputStream extends DeflaterOutputStream implements ZipConstants {
         }
         writeInt(CENSIG);           // CEN header signature
         if (hasZip64) {
-            writeShort(45);         // ver 4.5 for zip64
+            writeShort(versionMadeBy(e,45));         // ver 4.5 for zip64
             writeShort(45);
         } else {
-            writeShort(version);    // version made by
+            writeShort(versionMadeBy(e, version));    // version made by
             writeShort(version);    // version needed to extract
         }
         writeShort(flag);           // general purpose bit flag
@@ -603,7 +612,8 @@ class ZipOutputStream extends DeflaterOutputStream implements ZipConstants {
         }
         writeShort(0);              // starting disk number
         writeShort(0);              // internal file attributes (unused)
-        writeInt(0);                // external file attributes (unused)
+        // extra file attributes, used for storing posix permissions etc.
+        writeInt(e.extraAttributes > 0 ? e.extraAttributes << 16 : 0);
         writeInt(offset);           // relative offset of local header
         writeBytes(nameBytes, 0, nameBytes.length);
 
