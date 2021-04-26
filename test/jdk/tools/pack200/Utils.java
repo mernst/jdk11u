@@ -415,6 +415,7 @@ class Utils {
     }
 
     // given a jar file foo.jar will write to foo.pack
+    @SuppressWarnings("removal")
     static void pack(JarFile jarFile, File packFile) throws IOException {
         Pack200.Packer packer = Pack200.newPacker();
         Map<String, String> p = packer.properties();
@@ -451,6 +452,7 @@ class Utils {
     }
 
     // given a packed file, create the jar file in the current directory.
+    @SuppressWarnings("removal")
     private static void unpack0(File inFile, JarOutputStream jarStream,
             boolean useJavaUnpack) throws IOException {
         // Unpack the files

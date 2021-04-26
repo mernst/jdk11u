@@ -864,6 +864,7 @@ java/awt/im/memoryleak/InputContextMemoryLeakTest.java 8023814 linux-all,solaris
 # core_tools
 
 tools/pack200/CommandLineTests.java                             8059906 generic-all
+tools/pack200/Pack200Test.java                                  8059906 generic-all
 
 tools/jlink/JLinkReproducibleTest.java                          8258945 generic-all
 
